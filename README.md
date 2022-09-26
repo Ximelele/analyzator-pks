@@ -1,1 +1,0 @@
-# analyzator-pks
