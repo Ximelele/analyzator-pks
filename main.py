@@ -27,6 +27,7 @@ def get_file():
 def frame_data(frame, begin, end):
     return hexlify(frame[begin:(end + 1)])
 
+
 #def get_header_length(frame):
 
 
@@ -83,27 +84,63 @@ def get_ip_add(frame):
 
     return src_ip, dst_ip
 
+def frame_type(frame):
+    ether_type = int(frame_data(frame,12,13),16)
+    ieee_type = int(frame_data(frame,14,15),16)
+
+    if ether_type >= 1500:
+        return "Ethernet 2\n    "
+    elif ieee_type == 0xAAAA:
+        return "IEEE 802.3 LLC + SNAP\n"
+    elif ieee_type == 0xFFFF:
+        return "IEEE 802.3 raw\n"
+    else:
+        return "IEEE 802.3 LLC\n"
 
 def yaml_out(frame, frame_num):
+
     output = str("")
     output += f"frame_number: {frame_num}\n"
     output += get_frame_length(frame)
+    frame_t=frame_type(frame)
     src_mac,dst_mac = get_mac(frame)
     src_ip, dst_ip = get_ip_add(frame)
+    output += f"frame_type: {frame_t}"
     output += f"src_mac: {src_mac}\ndst_mac: {dst_mac}\n"
     output += f"src_ip: {src_ip}\ndst_ip: {dst_ip}\n"
     output += f"hexa_frame: \n{print_frame_hex(frame)}"
 
-    print(output)
+    #print(output)
 
+def ipv4_nodes(frame,nodes):
+    src_ip = str(frame_data(frame,26,29))
+
+    if src_ip in nodes:
+        nodes[src_ip] += 1
+    else:
+        nodes[src_ip] = 1
+
+def print_ipv4_nodes(nodes):
+    for ip in nodes:
+        print(f"node: {extract_ip(ip)}\nnumber_of_sent_packets: {nodes[ip]}")
+
+    max_send = max(nodes, key= lambda x: nodes[x])
+    print(f"max_send_packets_by: {extract_ip(max_send)}")
 
 # parsovanie na bytes z povodneho filu
 def parse_packet(data):
+    ip_nodes = {}
+
     for frame_num, values in enumerate(data):
         frame = bytes(values)
 
         yaml_out(frame, frame_num + 1)
-        break
+
+
+        if int(frame_data(frame,12,13),16) == 2048:
+            ipv4_nodes(frame,ip_nodes)
+
+    print_ipv4_nodes(ip_nodes)
 
 
 # User interface
