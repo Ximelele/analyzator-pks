@@ -3,6 +3,8 @@ from os.path import exists
 
 from scapy.all import *
 
+from Protocols.protocols import inside_protocol
+
 
 # overenie filu a nasledne otvorenie cez scapy
 def get_file():
@@ -28,7 +30,7 @@ def frame_data(frame, begin, end):
     return hexlify(frame[begin:(end + 1)])
 
 
-#def get_header_length(frame):
+# def get_header_length(frame):
 
 
 def get_frame_length(frame):
@@ -39,6 +41,12 @@ def get_frame_length(frame):
     else:
         output += f"len_frame_medium: 64\n"
     return output
+
+
+def get_header_length(frame):
+    header_size = int(str(frame_data(frame, 14, 14))[3:-1]) * 4
+
+    return frame[14 + header_size:len(frame)]
 
 
 # vypisanie celeho framu v hexa tvare
@@ -84,9 +92,10 @@ def get_ip_add(frame):
 
     return src_ip, dst_ip
 
+
 def frame_type(frame):
-    ether_type = int(frame_data(frame,12,13),16)
-    ieee_type = int(frame_data(frame,14,15),16)
+    ether_type = int(frame_data(frame, 12, 13), 16)
+    ieee_type = int(frame_data(frame, 14, 15), 16)
 
     if ether_type >= 1500:
         return "Ethernet 2\n    "
@@ -97,35 +106,40 @@ def frame_type(frame):
     else:
         return "IEEE 802.3 LLC\n"
 
-def yaml_out(frame, frame_num):
 
+def yaml_out(frame, frame_num):
     output = str("")
     output += f"frame_number: {frame_num}\n"
     output += get_frame_length(frame)
-    frame_t=frame_type(frame)
-    src_mac,dst_mac = get_mac(frame)
+    frame_t = frame_type(frame)
+    src_mac, dst_mac = get_mac(frame)
     src_ip, dst_ip = get_ip_add(frame)
     output += f"frame_type: {frame_t}"
     output += f"src_mac: {src_mac}\ndst_mac: {dst_mac}\n"
     output += f"src_ip: {src_ip}\ndst_ip: {dst_ip}\n"
     output += f"hexa_frame: \n{print_frame_hex(frame)}"
+    print(get_header_length(frame))
+    inside_protocol(frame)
 
-    #print(output)
+    # print(output)
 
-def ipv4_nodes(frame,nodes):
-    src_ip = str(frame_data(frame,26,29))
+
+def ipv4_nodes(frame, nodes):
+    src_ip = str(frame_data(frame, 26, 29))
 
     if src_ip in nodes:
         nodes[src_ip] += 1
     else:
         nodes[src_ip] = 1
 
+
 def print_ipv4_nodes(nodes):
     for ip in nodes:
         print(f"node: {extract_ip(ip)}\nnumber_of_sent_packets: {nodes[ip]}")
 
-    max_send = max(nodes, key= lambda x: nodes[x])
+    max_send = max(nodes, key=lambda x: nodes[x])
     print(f"max_send_packets_by: {extract_ip(max_send)}")
+
 
 # parsovanie na bytes z povodneho filu
 def parse_packet(data):
@@ -135,12 +149,12 @@ def parse_packet(data):
         frame = bytes(values)
 
         yaml_out(frame, frame_num + 1)
+        break
 
+        if int(frame_data(frame, 12, 13), 16) == 2048:
+            ipv4_nodes(frame, ip_nodes)
 
-        if int(frame_data(frame,12,13),16) == 2048:
-            ipv4_nodes(frame,ip_nodes)
-
-    print_ipv4_nodes(ip_nodes)
+    # print_ipv4_nodes(ip_nodes)
 
 
 # User interface
