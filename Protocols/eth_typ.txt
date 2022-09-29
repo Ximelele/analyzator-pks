@@ -1,7 +1,7 @@
-0x800 Internet IP (IPv4)
+0x800 IPv4
 0x801 X.75 Internet
 0x805 X.25 Level 3
-0x806 ARP (Address Resolution Protocol)
+0x806 ARP
 0x8035 Reverse ARP
 0x809B Appletalk
 0x80F3 AppleTalk AARP (Kinetics)

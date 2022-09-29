@@ -10,7 +10,7 @@ def get_file():
     print(f"Cesta k suboru by mala vyzerat nasledovne: D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\eth-1.pcap ",
           end='\n')
     # file = str(input())
-    file = "D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\eth-1.pcap"
+    file = "D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\trace-14.pcap"
     err = None
     if exists(file):
         if ".pcap" in file:
@@ -53,7 +53,7 @@ def get_header_length(frame):
 
 # vypisanie celeho framu v hexa tvare
 def print_frame_hex(frame):
-    output = ''
+    output = str()
     for index, frame_v in enumerate(frame):
         output += str(hexlify(frame[index:(index + 1)]))[2:4]
 
@@ -70,7 +70,7 @@ def print_frame_hex(frame):
 
 
 def extract_mac(frame):
-    return "" + frame[2:4] + ':' + frame[4:6] + ':' + frame[6:8] + ':' + frame[8:10] + ':' + frame[10:12] + ':' + frame[
+    return str() + frame[2:4] + ':' + frame[4:6] + ':' + frame[6:8] + ':' + frame[8:10] + ':' + frame[10:12] + ':' + frame[
                                                                                                                   12:14]
 
 
@@ -82,15 +82,19 @@ def get_mac(frame):
 
 
 def extract_ip(frame):
-    return "" + str(int(frame[2:4], 16)) + '.' + str(int(frame[4:6], 16)) + '.' + str(int(frame[6:8], 16)) + '.' + str(
+    return str() + str(int(frame[2:4], 16)) + '.' + str(int(frame[4:6], 16)) + '.' + str(int(frame[6:8], 16)) + '.' + str(
         int(frame[8:10], 16))
 
 
-def get_ip_add(frame):
+def get_ip_add(frame,ip=True):
     # 26-29 src ip add 30-33 dst ip add
-    src_ip = extract_ip(str(frame_data(frame, 26, 29)))
-    dst_ip = extract_ip(str(frame_data(frame, 30, 33)))
-
+    if ip:
+        src_ip = extract_ip(str(frame_data(frame, 26, 29)))
+        dst_ip = extract_ip(str(frame_data(frame, 30, 33)))
+    #28-31 src 38-41 dst arp ip add
+    else:
+        src_ip = extract_ip(str(frame_data(frame, 28, 31)))
+        dst_ip = extract_ip(str(frame_data(frame, 38, 41)))
     return src_ip, dst_ip
 
 
@@ -99,14 +103,18 @@ def frame_type(frame):
     ieee_type = int(frame_data(frame, 14, 15), 16)
 
     if ether_type >= 1500:
-        return "Ethernet 2"
+        return "ETHERNET II"
     elif ieee_type == 0xAAAA:
-        return "IEEE 802.3 LLC + SNAP"
+        return "IEEE 802.3 LLC & SNAP"
     elif ieee_type == 0xFFFF:
-        return "IEEE 802.3 raw"
+        return "IEEE 802.3 RAW"
     else:
         return "IEEE 802.3 LLC"
 
+
+def ports_out(frame,yaml_dic):
+    yaml_dic['src_port']=int(frame_data(get_header_length(frame),0,1),16)
+    yaml_dic['dst_port']=int(frame_data(get_header_length(frame),2,3),16)
 
 def inside_protocol(frame, yaml_dic):
     ether_type = int(frame_data(frame, 12, 13), 16)
@@ -118,7 +126,7 @@ def inside_protocol(frame, yaml_dic):
     llc = {}
     fill_dict(llc, "Protocols\\llc_typ.txt")
     ports = {}
-
+    ip_head_num = int(frame_data(frame, 23, 23), 16)
     if ether_type >= 1500:
         if ether_type in eth_dic:
             yaml_dic['ether_type'] = eth_dic.get(ether_type)
@@ -131,6 +139,52 @@ def inside_protocol(frame, yaml_dic):
 
         if int(frame_data(frame, 23, 23), 16) == 6:
             fill_dict(ports, "Protocols\\tcp.txt")
+
+        if ether_type == 2054:
+            src_ip, dst_ip = get_ip_add(frame,False)
+            if int(frame_data(frame,20,21),16) == 1:
+                yaml_dic['arp_opcode']= str("REQUEST")
+            else:
+                yaml_dic['arp_opcode']= str("REPLY")
+            yaml_dic['src_ip'] = src_ip
+            yaml_dic['dst_ip'] = dst_ip
+
+
+        if ether_type == 2048:
+            src_ip, dst_ip = get_ip_add(frame)
+            yaml_dic['src_ip'] = src_ip
+            yaml_dic['dst_ip'] = dst_ip
+
+            if ip_head_num in ip_head:
+                yaml_dic['protocol']=ip_head.get(ip_head_num)
+            ports_out(frame,yaml_dic)
+            if int(frame_data(get_header_length(frame),0,1),16) in ports:
+                yaml_dic['app_protocol'] = ports.get(int(frame_data(get_header_length(frame),0,1),16))
+            else:
+                if int(frame_data(get_header_length(frame),2,3),16) in ports:
+                    yaml_dic['app_protocol'] = ports.get(int(frame_data(get_header_length(frame),2,3),16))
+                else:
+                    yaml_dic['app_protocol']=str("unknown")
+            if ip_head_num == 1:
+                icmp = {}
+                fill_dict(icmp, "Protocols\\icmp_typ.txt")
+
+                if int(frame_data(get_header_length(frame),0,0),16) in icmp:
+                    yaml_dic["icmp_type"]=icmp.get(int(frame_data(get_header_length(frame),0,0),16))
+    elif ieee_type == 0xAAAA:
+        if ether_type in eth_dic:
+            yaml_dic['sap']= eth_dic.get(ether_type)
+        else:
+            yaml_dic['sap']= str("Unknown")
+    elif ieee_type == 0xFFFF:
+        yaml_dic['sap']= str("IPX")
+    elif int(frame_data(get_header_length(frame),14,14),16) in llc:
+        yaml_dic['sap'] = llc.get(int(frame_data(get_header_length(frame),14,14),16))
+
+
+
+
+
 
 
 # Source: https://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data/15423007#15423007
@@ -145,28 +199,21 @@ yaml.add_representer(str, str_presenter)
 
 global_yaml = []
 
+
 def yaml_out(frame, frame_num):
-    output = str("")
-    output += f"frame_number: {frame_num}\n"
+    yaml_dic = dict()
     length, media = get_frame_length(frame)
-
-    frame_t = frame_type(frame)
     src_mac, dst_mac = get_mac(frame)
-    src_ip, dst_ip = get_ip_add(frame)
-    output += f"src_mac: {src_mac}\ndst_mac: {dst_mac}\n"
-    output += f"src_ip: {src_ip}\ndst_ip: {dst_ip}\n"
+    yaml_dic["frame_number"] = frame_num
+    yaml_dic['len_frame_pcap'] = length
+    yaml_dic['len_frame_medium'] = media
+    yaml_dic['frame_type'] = frame_type(frame)
+    yaml_dic['src_mac'] = src_mac
+    yaml_dic['dst_mac'] = dst_mac
 
-    yaml = {}
-    yaml["frame_number"] = frame_num
-    yaml['len_frame_pcap'] = length
-    yaml['len_frame_medium'] = media
-    yaml['frame_type'] = frame_t
-    yaml['src_mac'] = src_mac
-    yaml['dst_mac'] = dst_mac
-
-    inside_protocol(frame, yaml)
-    yaml['hexa_frame'] = print_frame_hex(frame)
-    global_yaml.append(yaml)
+    inside_protocol(frame, yaml_dic)
+    yaml_dic['hexa_frame'] = print_frame_hex(frame)
+    global_yaml.append(yaml_dic)
 
 
 def ipv4_nodes(frame, nodes):
@@ -209,9 +256,11 @@ def parse_packet(data):
         if int(frame_data(frame, 12, 13), 16) == 2048:
             ipv4_nodes(frame, ip_nodes)
     nodes, max_sent = print_ipv4_nodes(ip_nodes)
-    packets = {'packets': global_yaml,
+    packets = {'name':"PKS2022/23",
+               'pcap_name':"all.pcap",
+               'packets': global_yaml,
                'ipv4_senders': nodes,
-               'max_send_packets_by':max_sent,
+               'max_send_packets_by': max_sent,
                }
     with open('output.yaml', 'w') as f:
         yaml.dump(packets, f, sort_keys=False, indent=3)
