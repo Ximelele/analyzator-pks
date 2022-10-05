@@ -496,7 +496,10 @@ def parse_packet(data, menu):
                    }
         with open('output.yaml', 'w') as f:
             yaml.dump(packets, f, sort_keys=False, indent=3)
-
+    elif menu == "ARP":
+        arp_stream = []
+        for frame_num, values in enumerate(data):
+            frame = bytes(values)
 
 # User interface
 # loop ktory kontroluje ze zadany subor existuje
