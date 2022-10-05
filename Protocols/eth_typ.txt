@@ -13,3 +13,5 @@
 0x8848 MPLS wit upstream-assigned label
 0x8863 PPPoE Discovery Stage
 0x8864 PPPoE Session Stage
+0x88CC LLDP
+0x9000 ECTP
