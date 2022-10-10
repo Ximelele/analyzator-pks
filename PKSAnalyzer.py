@@ -1,8 +1,29 @@
+import textwrap
 from binascii import hexlify
 from os.path import exists
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.scalarstring import LiteralScalarString
 from scapy.all import *
+
+
+def LS(s):
+    return LiteralScalarString(textwrap.dedent(s))
+
+
+def selection_menu():
+    menu = "\t\t Analyzator menu\n"
+    menu += "ALL - vypis vsetkych packetov\n"
+    menu += "HTTP - vypis HTTP komunikacii\n"
+    menu += "HTTPS - vypis HTTPS komunikacii\n"
+    menu += "TELNET - vypis TELNET komunikacii\n"
+    menu += "SSH - vypis SSH komunikacii\n"
+    menu += "FTP-CONTROL - vypis FTP-CONTROL komunikacii\n"
+    menu += "FTP-DATA - vypis FTP-DATA komunikacii\n"
+    menu += "ICMP - vypis ICMP komunikacii\n"  # nedokoncene
+    menu += "ARP - vypis ARP komunikacii\n"
+
+    return menu
 
 
 # class bude pouzite pre tcp porty a tftp
@@ -46,7 +67,7 @@ def get_file():
     print(f"Cesta k suboru by mala vyzerat nasledovne: D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\eth-1.pcap ",
           end='\n')
     # file = str(input())
-    file = "D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\trace-26.pcap"
+    file = "D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\trace-12.pcap"
     err = None
     if exists(file):
         if ".pcap" in file:
@@ -104,7 +125,7 @@ def print_frame_hex(frame):
     if len(frame) % 16 != 0:
         output += '\n'
 
-    return output
+    return LS(output)
 
 
 def extract_mac(frame):
@@ -220,16 +241,6 @@ def inside_protocol(frame, yaml_dic, framen):
         yaml_dic['sap'] = sap.get(int(get_frame_data(frame, 14, 14), 16))
 
 
-# Source: https://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data/15423007#15423007
-def str_presenter(dumper, frame):
-    if len(frame.splitlines()) > 1:  # check for multiline string
-        return dumper.represent_scalar('tag:yaml.org,2002:str', frame, style="|")
-
-    return dumper.represent_scalar('tag:yaml.org,2002:str', frame)
-
-
-yaml.add_representer(str, str_presenter)
-
 global_yaml = []
 
 
@@ -246,6 +257,7 @@ def yaml_out(frame, frame_num, temp_dic):
 
     inside_protocol(frame, yaml_dic, frame_num)
     yaml_dic['hexa_frame'] = print_frame_hex(frame)
+
     if temp_dic is None:
         global_yaml.append(yaml_dic)
         return
@@ -291,7 +303,36 @@ def ip_in_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port):
     return False
 
 
-def ip_in_stream_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac):
+# #toto je pekna picovina a nefunguje to lebo to robim request reply a nie id a flags
+# def ip_in_stream_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac):
+#     for pos in range(len(packet_stream)):
+#         if packet_stream[pos].closed == True:
+#             continue
+#         if (packet_stream[pos].src_ip == dst_ip and packet_stream[pos].dst_ip == src_ip and
+#             packet_stream[pos].src_mac == dst_mac and packet_stream[pos].dst_mac == src_mac) or \
+#                 (packet_stream[pos].src_ip == src_ip and packet_stream[pos].dst_ip == dst_ip and
+#                  packet_stream[pos].src_mac == src_mac and packet_stream[pos].dst_mac == dst_mac):
+#             return pos
+#
+#     return False
+#
+#
+# def insert_to_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac, pos, data):
+#     new_stream = ip_in_stream_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac)
+#
+#     if new_stream:
+#         packet_stream[new_stream].frames.append(pos + 1)
+#         if int(get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0x0 or int(
+#                 get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0xB:
+#             packet_stream[new_stream].closed = True
+#     else:
+#         packet_stream.append(IcmpStream(dst_ip, src_ip, dst_mac, src_mac, pos))
+#         if int(get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0x0 or int(
+#                 get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0xB:
+#             packet_stream[new_stream].closed = True
+
+
+def arp_in_stream(packet_stream, src_ip, dst_ip, src_mac, dst_mac):
     for pos in range(len(packet_stream)):
         if packet_stream[pos].closed == True:
             continue
@@ -301,31 +342,29 @@ def ip_in_stream_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac):
                  packet_stream[pos].src_mac == src_mac and packet_stream[pos].dst_mac == dst_mac):
             return pos
 
-    return False
 
-
-def insert_to_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac, pos, data):
-    new_stream = ip_in_stream_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac)
+def insert_arp_stream(packet_stream, src_ip, dst_ip, src_mac, dst_mac, pos, data):
+    new_stream = arp_in_stream(packet_stream, src_ip, dst_ip, src_mac, dst_mac)
 
     if new_stream:
         packet_stream[new_stream].frames.append(pos + 1)
-        if int(get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0x0 or int(
-                get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0xB:
+        if int(get_frame_data(bytes(data[pos]), 21, 21)) == 2:
             packet_stream[new_stream].closed = True
     else:
-        packet_stream.append(IcmpStream(dst_ip, src_ip, dst_mac, src_mac, pos))
-        if int(get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0x0 or int(
-                get_frame_data(get_header_length(bytes(data[pos])), 0, 0), 16) == 0xB:
-            packet_stream[new_stream].closed = True
+        if int(get_frame_data(bytes(data[pos]), 21, 21)) == 1:
+            packet_stream.append(IcmpStream(dst_ip, src_ip, dst_mac, src_mac, pos))
+        else:
+            packet_stream.append(IcmpStream(dst_ip, src_ip, dst_mac, src_mac, pos, True))
 
 
 def insert_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port, pos):
     new_stream = ip_in_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port)
 
-    if new_stream:
-        tcp_stream[new_stream].frames.append(pos + 1)
-    else:
+    if new_stream is False:
         tcp_stream.append(TcpStreams(dst_ip, src_ip, dst_port, src_port, pos))
+
+    else:
+        tcp_stream[new_stream].frames.append(pos + 1)
 
 
 def print_stream(data, tcp_frame):
@@ -338,7 +377,7 @@ def print_stream(data, tcp_frame):
 
 
 def get_ending(frame):
-    return int(get_frame_data(get_header_length(frame), 13, 13))
+    return int(get_frame_data(get_header_length(frame), 13, 13),16)
 
 
 def print_tcp_stream(tcp_stream, data):
@@ -348,14 +387,14 @@ def print_tcp_stream(tcp_stream, data):
     cmplt_comms = []
 
     for pos in tcp_stream:
-        complete_comms = dict()
+        complete_comms = {}
         begin_com = False
         end_com = False
 
         if len(pos.frames) >= 3:
-            if (get_ending(bytes(data[pos.frames[0] - 1])) == 2) and (
-                    get_ending(bytes(data[pos.frames[1] - 1])) == 12) and (
-                    get_ending(bytes(data[pos.frames[2] - 1])) == 10):
+            if (get_ending(bytes(data[pos.frames[0] - 1])) == 0x2) and (
+                    get_ending(bytes(data[pos.frames[1] - 1])) == 0x12) and (
+                    get_ending(bytes(data[pos.frames[2] - 1])) == 0x10):
                 begin_com = True
 
         end1 = get_ending(bytes(data[pos.frames[len(pos.frames) - 1] - 1]))
@@ -374,11 +413,10 @@ def print_tcp_stream(tcp_stream, data):
         if end1 == 14 or end1 == 4:  # rst
             end_com = True
         else:
-            if end1 == 10 and (end2 == 11 or end2 == 19) and (three_way == 11 or three_way == 19):  # threeway handshake
+            if end1 == 0x10 and (end2 == 0x11 or end2 == 0x19) and (three_way == 0x11 or three_way == 0x19):  # threeway handshake
                 end_com = True
-            else:
-                if end1 == 10 and (end2 == 11 or end2 == 19) and three_way == 10 and \
-                        (four_way == 11 or four_way == 19):  # fourway handshake
+            if end1 == 0x10 and (end2 == 0x11 or end2 == 0x19) and three_way == 0x10 and \
+                        (four_way == 0x11 or four_way == 0x19):  # fourway handshake
                     end_com = True
 
         if begin_com and end_com:
@@ -390,7 +428,7 @@ def print_tcp_stream(tcp_stream, data):
             number_comm += 1
 
         if not partial_comms:
-            if begin_com or end_com:
+            if begin_com and not end_com or not begin_com and end_com:
                 partial_comms = True
                 partial_comms_dic = print_stream(data, pos.frames)
 
@@ -432,6 +470,7 @@ def print_icnmp_stream(packet_stream, data):
 
 # parsovanie na bytes z povodneho filu
 def parse_packet(data, menu):
+    yaml = YAML()
     menu_opt = ["HTTP", "HTTPS", "TELNET", "SSH", "FTP datove", "FTP riadiace"]
     gl_menu = menu
     if menu == "ALL":
@@ -451,8 +490,9 @@ def parse_packet(data, menu):
                    'ipv4_senders': nodes,
                    'max_send_packets_by': max_sent,
                    }
-        with open('output1.yaml', 'w') as f:
-            yaml.dump(packets, f, sort_keys=False, indent=3)
+
+        with open('output.yaml', 'w') as f:
+            yaml.dump(packets, f)
     elif menu in menu_opt:
         tcp_stream = []
         ports = fill_dict("Protocols\\tcp.txt")
@@ -478,28 +518,29 @@ def parse_packet(data, menu):
                    'partial_comms': partial_comms,
                    }
         with open('output.yaml', 'w') as f:
-            yaml.dump(packets, f, sort_keys=False, indent=3)
-    elif menu == "ICMP":
-        icmp_stream = []
-        for frame_num, values in enumerate(data):
-            frame = bytes(values)
-            src_ip, dst_ip = get_ip_add(frame)
-            src_mac, dst_mac = get_mac(frame)
-            if int(get_frame_data(frame, 23, 23), 16) == 1:
-                insert_to_icmp(icmp_stream, src_ip, dst_ip, src_mac, dst_mac, frame_num, data)
-        partial_comms, complete_comms = print_icnmp_stream(icmp_stream, data)
-
-        packets = {'name': "PKS2022/23",
-                   'pcap_name': menu + '.pcap',
-                   'complete_comms': complete_comms,
-                   'partial_comms': partial_comms,
-                   }
-        with open('output.yaml', 'w') as f:
-            yaml.dump(packets, f, sort_keys=False, indent=3)
+            yaml.dump(packets, f)
+    # elif menu == "ICMP":
+    #     icmp_stream = []
+    #     for frame_num, values in enumerate(data):
+    #         frame = bytes(values)
+    #         src_ip, dst_ip = get_ip_add(frame)
+    #         src_mac, dst_mac = get_mac(frame)
+    #         if int(get_frame_data(frame, 23, 23), 16) == 1:
+    #             insert_to_icmp(icmp_stream, src_ip, dst_ip, src_mac, dst_mac, frame_num, data)
+    #     partial_comms, complete_comms = print_icnmp_stream(icmp_stream, data)
+    #
+    #     packets = {'name': "PKS2022/23",
+    #                'pcap_name': menu + '.pcap',
+    #                'complete_comms': complete_comms,
+    #                'partial_comms': partial_comms,
+    #                }
+    #     with open('output.yaml', 'w') as f:
+    #         yaml.dump(packets, f)
     elif menu == "ARP":
         arp_stream = []
         for frame_num, values in enumerate(data):
             frame = bytes(values)
+
 
 # User interface
 # loop ktory kontroluje ze zadany subor existuje
@@ -511,4 +552,11 @@ while (True):
         break
     print(err)
 
-parse_packet(data, "ALL")
+# menu = selection_menu()
+# while menu != "END":
+#     print(menu)
+#     choice = str(input("Vyber si vstup "))
+#     print(choice)
+#     if choice == "END":
+#         break
+parse_packet(data, "HTTP")
