@@ -22,6 +22,8 @@ def selection_menu():
     menu += "FTP-DATA - vypis FTP-DATA komunikacii\n"
     menu += "ICMP - vypis ICMP komunikacii\n"  # nedokoncene
     menu += "ARP - vypis ARP komunikacii\n"
+    menu += "C - zmenit subor\n"
+    menu += "END - ukoncenie\n"
 
     return menu
 
@@ -64,14 +66,15 @@ class IcmpStream:
 
 # overenie filu a nasledne otvorenie cez scapy
 def get_file():
-    print(f"Cesta k suboru by mala vyzerat nasledovne: D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\eth-1.pcap ",
-          end='\n')
-    # file = str(input())
+    print(
+        f"Cesta k suboru by mala vyzerat nasledovne: D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\trace-26.pcap ",
+        end='\n')
+    file = str(input())
     file = "D:\\Python projects\pks22\\vzorky_pcap_na_analyzu\\trace-12.pcap"
     err = None
     if exists(file):
         if ".pcap" in file:
-            return rdpcap(file), err
+            return rdpcap(file), err, str(file.rsplit("\\", 1)[1])
         else:
             err = "Nevalidna koncovka suboru"
 
@@ -300,7 +303,7 @@ def ip_in_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port):
                 (tcp_stream[pos].src_ip == src_ip and tcp_stream[pos].dst_ip == dst_ip and
                  tcp_stream[pos].src_port == src_port and tcp_stream[pos].dst_port == dst_port):
             return pos
-    return False
+    return None
 
 
 # #toto je pekna picovina a nefunguje to lebo to robim request reply a nie id a flags
@@ -334,19 +337,25 @@ def ip_in_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port):
 
 def arp_in_stream(packet_stream, src_ip, dst_ip, src_mac, dst_mac):
     for pos in range(len(packet_stream)):
-        if packet_stream[pos].closed == True:
+        if packet_stream[pos].closed:
             continue
-        if (packet_stream[pos].src_ip == dst_ip and packet_stream[pos].dst_ip == src_ip and
-            packet_stream[pos].src_mac == dst_mac and packet_stream[pos].dst_mac == src_mac) or \
-                (packet_stream[pos].src_ip == src_ip and packet_stream[pos].dst_ip == dst_ip and
-                 packet_stream[pos].src_mac == src_mac and packet_stream[pos].dst_mac == dst_mac):
+        if (packet_stream[pos].src_ip == dst_ip and packet_stream[pos].dst_ip == src_ip and packet_stream[
+            pos].src_mac == src_mac) or \
+                (packet_stream[pos].src_ip == src_ip and packet_stream[pos].dst_ip == dst_ip and packet_stream[
+                    pos].src_mac == src_mac):
             return pos
+        elif (packet_stream[pos].src_ip == dst_ip and packet_stream[pos].dst_ip == src_ip and packet_stream[
+            pos].src_mac == dst_mac) or \
+                (packet_stream[pos].src_ip == src_ip and packet_stream[pos].dst_ip == dst_ip and packet_stream[
+                    pos].src_mac == dst_mac):
+            return pos
+    return None
 
 
 def insert_arp_stream(packet_stream, src_ip, dst_ip, src_mac, dst_mac, pos, data):
     new_stream = arp_in_stream(packet_stream, src_ip, dst_ip, src_mac, dst_mac)
 
-    if new_stream:
+    if new_stream is not None:
         packet_stream[new_stream].frames.append(pos + 1)
         if int(get_frame_data(bytes(data[pos]), 21, 21)) == 2:
             packet_stream[new_stream].closed = True
@@ -360,11 +369,10 @@ def insert_arp_stream(packet_stream, src_ip, dst_ip, src_mac, dst_mac, pos, data
 def insert_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port, pos):
     new_stream = ip_in_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port)
 
-    if new_stream is False:
-        tcp_stream.append(TcpStreams(dst_ip, src_ip, dst_port, src_port, pos))
-
-    else:
+    if new_stream is not None:
         tcp_stream[new_stream].frames.append(pos + 1)
+    else:
+        tcp_stream.append(TcpStreams(dst_ip, src_ip, dst_port, src_port, pos))
 
 
 def print_stream(data, tcp_frame):
@@ -377,7 +385,7 @@ def print_stream(data, tcp_frame):
 
 
 def get_ending(frame):
-    return int(get_frame_data(get_header_length(frame), 13, 13),16)
+    return int(get_frame_data(get_header_length(frame), 13, 13), 16)
 
 
 def print_tcp_stream(tcp_stream, data):
@@ -413,11 +421,12 @@ def print_tcp_stream(tcp_stream, data):
         if end1 == 14 or end1 == 4:  # rst
             end_com = True
         else:
-            if end1 == 0x10 and (end2 == 0x11 or end2 == 0x19) and (three_way == 0x11 or three_way == 0x19):  # threeway handshake
+            if end1 == 0x10 and (end2 == 0x11 or end2 == 0x19) and (
+                    three_way == 0x11 or three_way == 0x19):  # threeway handshake
                 end_com = True
             if end1 == 0x10 and (end2 == 0x11 or end2 == 0x19) and three_way == 0x10 and \
-                        (four_way == 0x11 or four_way == 0x19):  # fourway handshake
-                    end_com = True
+                    (four_way == 0x11 or four_way == 0x19):  # fourway handshake
+                end_com = True
 
         if begin_com and end_com:
             complete_comms['number_comm'] = number_comm
@@ -468,11 +477,39 @@ def print_icnmp_stream(packet_stream, data):
     return partial_comms_dic, cmplt_comms
 
 
+def print_arp_stream(arp_stream, data):
+    number_comm = 1
+    number_comm_part = 1
+
+    partial_comms_dic = []
+    cmplt_comms = []
+    for pos in arp_stream:
+        complete_comms = dict()
+        x = len(pos.frames)
+        if pos.closed and x > 1:
+            complete_comms['number_comm'] = number_comm
+            complete_comms['src_comm'] = pos.src_ip
+            complete_comms['dst_comm'] = pos.dst_ip
+            complete_comms['packets'] = print_stream(data, pos.frames)
+            cmplt_comms.append(complete_comms)
+            number_comm += 1
+        else:
+            partial_comms = {
+                "number_comm": number_comm_part,
+                "src_comm": pos.src_ip,
+                "dst_comm": pos.dst_ip,
+                "packets": print_stream(data, pos.frames)
+            }
+            partial_comms_dic.append(partial_comms)
+            number_comm_part += 1
+
+    return cmplt_comms, partial_comms_dic
+
+
 # parsovanie na bytes z povodneho filu
-def parse_packet(data, menu):
+def parse_packet(data, menu, counter, pcap_name):
     yaml = YAML()
     menu_opt = ["HTTP", "HTTPS", "TELNET", "SSH", "FTP datove", "FTP riadiace"]
-    gl_menu = menu
     if menu == "ALL":
         ip_nodes = {}
 
@@ -485,13 +522,13 @@ def parse_packet(data, menu):
                 ipv4_nodes(frame, ip_nodes)
         nodes, max_sent = print_ipv4_nodes(ip_nodes)
         packets = {'name': "PKS2022/23",
-                   'pcap_name': "all.pcap",
+                   'pcap_name': pcap_name,
                    'packets': global_yaml,
                    'ipv4_senders': nodes,
                    'max_send_packets_by': max_sent,
                    }
 
-        with open('output.yaml', 'w') as f:
+        with open(f'output{counter}.yaml', 'w') as f:
             yaml.dump(packets, f)
     elif menu in menu_opt:
         tcp_stream = []
@@ -513,11 +550,11 @@ def parse_packet(data, menu):
         partial_comms, complete_comms = print_tcp_stream(tcp_stream, data)
 
         packets = {'name': "PKS2022/23",
-                   'pcap_name': menu + '.pcap',
+                   'pcap_name': pcap_name,
                    'complete_comms': complete_comms,
                    'partial_comms': partial_comms,
                    }
-        with open('output.yaml', 'w') as f:
+        with open(f'output{counter}.yaml', 'w') as f:
             yaml.dump(packets, f)
     # elif menu == "ICMP":
     #     icmp_stream = []
@@ -540,23 +577,48 @@ def parse_packet(data, menu):
         arp_stream = []
         for frame_num, values in enumerate(data):
             frame = bytes(values)
+            src_ip, dst_ip = get_ip_add(frame, False)
+            src_mac, dst_mac = get_mac(frame)
+            if int(get_frame_data(frame, 12, 13), 16) == 2054:
+                insert_arp_stream(arp_stream, src_ip, dst_ip, src_mac, dst_mac, frame_num, data)
+        complete_comms, partial_comms = print_arp_stream(arp_stream, data)
+
+        packets = {'name': "PKS2022/23",
+                   'pcap_name': pcap_name,
+                   'complete_comms': complete_comms,
+                   'partial_comms': partial_comms,
+                   }
+
+        with open(f'output{counter}.yaml', 'w') as f:
+            yaml.dump(packets, f)
 
 
 # User interface
 # loop ktory kontroluje ze zadany subor existuje
-data = None
-while (True):
 
-    data, err = get_file()
-    if data is not None:
+
+def set_data():
+    _data = None
+    while (True):
+
+        _data, err, pcap_name = get_file()
+        if _data is not None:
+            break
+        print(err)
+    return _data, pcap_name
+
+
+menu = selection_menu()
+
+counter = 0
+data, pcap_name = set_data()
+while menu != "END":
+    print(menu)
+    gl_menu = str(input("Vyber si vstup "))
+    if gl_menu == "END":
         break
-    print(err)
-
-# menu = selection_menu()
-# while menu != "END":
-#     print(menu)
-#     choice = str(input("Vyber si vstup "))
-#     print(choice)
-#     if choice == "END":
-#         break
-parse_packet(data, "HTTP")
+    if gl_menu == "C":
+        data, pcap_name = set_data()
+        continue
+    parse_packet(data, gl_menu, counter, pcap_name)
+    counter += 1
