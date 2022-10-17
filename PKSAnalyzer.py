@@ -7,10 +7,12 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 from scapy.all import *
 
 
+# formatovanie YAML
 def LS(s):
     return LiteralScalarString(textwrap.dedent(s))
 
 
+# User menu
 def selection_menu():
     menu = "\t\t Analyzator menu\n"
     menu += "ALL - vypis vsetkych packetov\n"
@@ -20,7 +22,7 @@ def selection_menu():
     menu += "SSH - vypis SSH komunikacii\n"
     menu += "FTP-CONTROL - vypis FTP-CONTROL komunikacii\n"
     menu += "FTP-DATA - vypis FTP-DATA komunikacii\n"
-    menu += "ICMP - vypis ICMP komunikacii\n"  # nedokoncene
+    menu += "ICMP - vypis ICMP komunikacii\n"
     menu += "ARP - vypis ARP komunikacii\n"
     menu += "C - zmenit subor\n"
     menu += "END - ukoncenie\n"
@@ -310,7 +312,6 @@ def ip_in_stream(tcp_stream, src_ip, dst_ip, src_port, dst_port):
     return None
 
 
-# toto je pekna picovina a nefunguje to lebo to robim request reply a nie id a flags
 def ip_in_stream_icmp(packet_stream, src_ip, dst_ip, src_mac, dst_mac):
     for pos in range(len(packet_stream)):
         if packet_stream[pos].closed == True:
@@ -543,8 +544,6 @@ def tfpt_stream(tftp_stream, data):
         number_comm += 1
     return tftp_comm
 
-    # parsovanie na bytes z povodneho filu
-
 
 def parse_packet(data, menu, counter, pcap_name):
     yaml = YAML()
@@ -663,10 +662,6 @@ def parse_packet(data, menu, counter, pcap_name):
             packets['complete_comms'] = complete_comms
         with open(f'output{counter}.yaml', 'w') as f:
             yaml.dump(packets, f)
-
-
-# User interface
-# loop ktory kontroluje ze zadany subor existuje
 
 
 def set_data():
