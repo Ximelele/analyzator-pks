@@ -515,7 +515,37 @@ def print_arp_stream(arp_stream, data):
     return cmplt_comms, partial_comms_dic
 
 
-# parsovanie na bytes z povodneho filu
+def tfpt_stream(tftp_stream, data):
+    index = 0
+    number_comm = 1
+    while index < len(tftp_stream):
+        if tftp_stream[index].dst_port == 69:
+            if tftp_stream[index].dst_port == tftp_stream[index + 1].src_port or \
+                    tftp_stream[index].src_port == tftp_stream[index + 1].dst_port:
+                tftp_stream[index + 1].frames.insert(0, tftp_stream[index].frames[0])
+                tftp_stream.pop(index)
+                index += 1
+            else:
+                tftp_stream.pop(index + 1)
+        else:
+            tftp_stream.pop(index)
+    if len(tftp_stream) == 0:
+        return tftp_stream
+    tftp_comm = []
+
+    for pos in tftp_stream:
+        complete_comms = {'number_comm': number_comm,
+                          'src_comm': pos.src_ip,
+                          'dst_comm': pos.dst_ip,
+                          'packets': print_stream(data, pos.frames)
+                          }
+        tftp_comm.append(complete_comms)
+        number_comm += 1
+    return tftp_comm
+
+    # parsovanie na bytes z povodneho filu
+
+
 def parse_packet(data, menu, counter, pcap_name):
     yaml = YAML()
     menu_opt = ["HTTP", "HTTPS", "TELNET", "SSH", "FTP datove", "FTP riadiace"]
@@ -613,7 +643,26 @@ def parse_packet(data, menu, counter, pcap_name):
         with open(f'output{counter}.yaml', 'w') as f:
             yaml.dump(packets, f)
     elif menu == "TFTP":
-        tcp_stream = []
+        _tftp_stream = []
+
+        for frame_num, values in enumerate(data):
+            frame = bytes(values)
+            if int(get_frame_data(frame, 12, 13), 16) == 2048 and int(get_frame_data(frame, 23, 23), 16) == 17:
+                src_ip, dst_ip = get_ip_add(frame)
+                src_port = int(get_frame_data(get_header_length(frame), 0, 1), 16)
+                dst_port = int(get_frame_data(get_header_length(frame), 2, 3), 16)
+                insert_stream(_tftp_stream, src_ip, dst_ip, src_port, dst_port, frame_num)
+
+        complete_comms = tfpt_stream(_tftp_stream, data)
+
+        packets = {'name': "PKS2022/23",
+                   'pcap_name': pcap_name,
+                   'filter_name': menu,
+                   }
+        if len(complete_comms) > 0:
+            packets['complete_comms'] = complete_comms
+        with open(f'output{counter}.yaml', 'w') as f:
+            yaml.dump(packets, f)
 
 
 # User interface
