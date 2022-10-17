@@ -399,7 +399,7 @@ def print_tcp_stream(tcp_stream, data):
     number_comm = 1
     number_comm_part = 1
     partial_comms = False
-    partial_comms_dic = {}
+    partial_comms_arr = []
     cmplt_comms = []
 
     for pos in tcp_stream:
@@ -447,13 +447,14 @@ def print_tcp_stream(tcp_stream, data):
         if not partial_comms:
             if begin_com and not end_com or not begin_com and end_com:
                 partial_comms = True
-                partial_comms_dic['number_comm'] = number_comm_part
-                # partial_comms_dic['src_comm'] = pos.src_ip
-                # partial_comms_dic['dst_comm'] = pos.dst_ip
-                partial_comms_dic['packets'] = print_stream(data, pos.frames)
+                part_dict={
+                    'number_comm':number_comm_part,
+                    'packets':print_stream(data, pos.frames),
+                }
+                partial_comms_arr.append(part_dict)
                 number_comm_part += 1
 
-    return [partial_comms_dic], cmplt_comms
+    return partial_comms_arr, cmplt_comms
 
 
 def print_icnmp_stream(packet_stream, data):
