@@ -141,6 +141,8 @@ def extract_mac(frame):
 def get_mac(frame):
     # 0-5 dst add 6-11 src add
     dst_mac = extract_mac(str(get_frame_data(frame, 0, 5)))
+    if dst_mac == "00:00:00:00:00:00":
+        dst_mac = "FF:FF:FF:FF:FF:FF"
     src_mac = extract_mac(str(get_frame_data(frame, 6, 11)))
     return src_mac.upper(), dst_mac.upper()
 
