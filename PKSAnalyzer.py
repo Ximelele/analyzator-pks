@@ -188,8 +188,8 @@ gl_menu = ""
 def inside_protocol(frame, yaml_dic, framen):
     ether_type = int(get_frame_data(frame, 12, 13), 16)
     ieee_type = int(get_frame_data(frame, 14, 15), 16)
-    eth_dic = fill_dict("Protocols\\eth_typ.txt")
-    ip_head = fill_dict("Protocols\\ip_protoly.txt")
+    eth_dic = fill_dict("Protocols/ether_type.txt")
+    ip_head = fill_dict("Protocols/ip_protocols.txt")
     sap = fill_dict("Protocols\\sap.txt")
     pid = fill_dict("Protocols\\pid.txt")
     ports = {}
@@ -231,7 +231,7 @@ def inside_protocol(frame, yaml_dic, framen):
                     # else:
                     #     yaml_dic['app_protocol'] = str("unknown")
             if ip_head_num == 1:
-                icmp = fill_dict("Protocols\\icmp_typ.txt")
+                icmp = fill_dict("Protocols/icmp_type.txt")
 
                 if int(get_frame_data(get_header_length(frame), 0, 0), 16) in icmp:
                     yaml_dic["icmp_type"] = icmp.get(int(get_frame_data(get_header_length(frame), 0, 0), 16))
